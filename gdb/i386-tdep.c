@@ -606,9 +606,16 @@ static const char *disassembly_flavor = att_flavor;
 
    This function is 64-bit safe.  */
 
+#ifndef USE_INT3
+constexpr gdb_byte i386_hlt_insn[] = { 0xf4 }; /* hlt */
+
+typedef BP_MANIPULATION (i386_hlt_insn) i386_hlt;
+#else
 constexpr gdb_byte i386_break_insn[] = { 0xcc }; /* int 3 */
 
 typedef BP_MANIPULATION (i386_break_insn) i386_breakpoint;
+#endif
+
 
 
 /* Displaced instruction handling.  */
@@ -8389,6 +8396,78 @@ i386_type_align (struct gdbarch *gdbarch, struct type *type)
   return 0;
 }
 
+
+static int32_t get_disp8(uint8_t * arg)
+{
+  return *((int8_t *) arg);
+}
+
+static int32_t get_disp32(uint8_t * arg)
+{
+  return *((int32_t *) arg);
+}
+
+static std::vector<CORE_ADDR>
+i386_software_single_step (struct regcache *regcache)
+{
+  struct gdbarch *gdbarch = regcache->arch ();
+  CORE_ADDR loc = regcache_read_pc (regcache);
+  int size = gdb_insn_length (gdbarch, loc);
+
+  if ((size <= 0) || (size > I386_MAX_INSN_LEN))
+    return {};  /* invalid instruction - use hw single step */
+
+  uint8_t insn[I386_MAX_INSN_LEN];
+  memset(insn, 0, I386_MAX_INSN_LEN);
+  if (target_read_code (loc, insn, size))
+    return {};  /* unable to read entire instruction - use hw single step */
+
+  /* This switch statement filters out all control flow instructions
+   * and gives the possible destinations. Since we do not want to
+   * read the registers, we cannot tell which way a branch will be taken,
+   * so if we cannot determine the destination(s) statically, we revert to
+   * hardware single step. */
+
+  switch (insn[0]) {
+     case 0x70: case 0x71: case 0x72: case 0x73:
+     case 0x74: case 0x75: case 0x76: case 0x77:
+     case 0x78: case 0x79: case 0x7a: case 0x7b:
+     case 0x7c: case 0x7d: case 0x7e: case 0x7f:
+       /* short conditional branches */
+       return {loc + 2 + get_disp8(&insn[1]), loc + 2};
+     case 0xeb:
+       /* short unconditional branch */
+       return {loc + 2 + get_disp8(&insn[1])};
+     case 0x0f:
+       /* Two-byte instructions */
+       switch (insn[1]) {
+         case 0x80: case 0x81: case 0x82: case 0x83:
+         case 0x84: case 0x85: case 0x86: case 0x87:
+         case 0x88: case 0x89: case 0x8a: case 0x8b:
+         case 0x8c: case 0x8d: case 0x8e: case 0x8f:
+           /* long conditional branches */
+           return {loc + 6 + get_disp32(&insn[2]), loc + 6};
+         default:
+           break;
+       }
+       break;
+     case 0xe9: case 0xe8:
+       /* long jump and call */
+       return {loc + 5 + get_disp32(&insn[2])};
+     case 0xc3: case 0xf3:
+       /* ret and repz ret */
+       return {};
+     case 0xff:
+       /* indirect jumps and calls */
+       return {};
+     default:
+       break;
+  }
+
+  /* Instruction is NOT control flow */
+  return {loc + size};
+}
+
 
 /* Note: This is called for both i386 and amd64.  */
 
@@ -8530,10 +8609,32 @@ i386_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   /* Stack grows downward.  */
   set_gdbarch_inner_than (gdbarch, core_addr_lessthan);
 
+#ifndef USE_INT3
+  set_gdbarch_breakpoint_kind_from_pc (gdbarch, i386_hlt::kind_from_pc);
+  set_gdbarch_sw_breakpoint_from_kind (gdbarch, i386_hlt::bp_from_kind);
+  set_gdbarch_decr_pc_after_break (gdbarch, 0);
+  set_gdbarch_software_single_step (gdbarch, i386_software_single_step);
+/*  set_gdbarch_read_pc (gdbarch, windows_read_pc);
+    static CORE_ADDR
+    windows_read_pc (readable_regcache *regcache)
+    {
+      ULONGEST psr_value, pc_value;
+      int slot_num;
+
+      regcache->cooked_read (IA64_PSR_REGNUM, &psr_value);
+      regcache->cooked_read (IA64_IP_REGNUM, &pc_value);
+      slot_num = (psr_value >> 41) & 3;
+
+      return pc_value | (slot_num * SLOT_MULTIPLIER);
+    }
+*/
+
+
+#else
   set_gdbarch_breakpoint_kind_from_pc (gdbarch, i386_breakpoint::kind_from_pc);
   set_gdbarch_sw_breakpoint_from_kind (gdbarch, i386_breakpoint::bp_from_kind);
-
   set_gdbarch_decr_pc_after_break (gdbarch, 1);
+#endif
   set_gdbarch_max_insn_length (gdbarch, I386_MAX_INSN_LEN);
 
   set_gdbarch_frame_args_skip (gdbarch, 8);

@@ -1006,8 +1006,17 @@ value_assign (struct value *toval, struct value *fromval)
 
   /* Since modifying a register can trash the frame chain, and
      modifying memory can trash the frame cache, we save the old frame
-     and then restore the new frame afterwards.  */
-  old_frame = get_frame_id (deprecated_safe_get_selected_frame ());
+     and then restore the new frame afterwards. */
+  switch (VALUE_LVAL (toval))
+    {
+    case lval_internalvar:
+    case lval_internalvar_component:
+      /* Not needed for internal variables. */
+      break;
+    default:
+      old_frame = get_frame_id (deprecated_safe_get_selected_frame ());
+      break;
+    }
 
   switch (VALUE_LVAL (toval))
     {

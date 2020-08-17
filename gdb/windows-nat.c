@@ -172,6 +172,8 @@ enum
         | CONTEXT_EXTENDED_REGISTERS
 
 static uintptr_t dr[8];
+static uintptr_t exception_address = 0;
+static DWORD exception_tid = 0;
 static int debug_registers_changed;
 static int debug_registers_used;
 
@@ -393,7 +395,10 @@ thread_rec (DWORD id, int get_context)
 	  {
 	    if (get_context > 0 && id != current_event.dwThreadId)
 	      {
-		if (SuspendThread (th->h) == (DWORD) -1)
+                DWORD rc = SuspendThread (th->h);
+                DEBUG_EVENTS (("SuspendThread: th=%p th->h=%p rc=%x\n",
+                                 th, (void *) th->h, rc));
+		if (rc == (DWORD) -1)
 		  {
 		    DWORD err = GetLastError ();
 
@@ -450,6 +455,7 @@ windows_add_thread (ptid_t ptid, HANDLE h, void *tlb, bool main_thread_p)
   th->thread_local_base = (CORE_ADDR) (uintptr_t) tlb;
   th->next = thread_head.next;
   thread_head.next = th;
+  DEBUG_EVENTS (("gdb: new thread th=%p th->h=%p\n", th, (void *) th->h));
 
   /* Add this new thread to the list of threads.
 
@@ -593,11 +599,25 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
   DWORD tid = regcache->ptid ().tid ();
   windows_thread_info *th = thread_rec (tid, TRUE);
 
+  DEBUG_EVENTS (("gdb: fetch_registers for tid=0x%x\n", tid));
+
   /* Check if TH exists.  Windows sometimes uses a non-existent
      thread id in its events.  */
   if (th == NULL)
     return;
 
+  if ((r == I386_EIP_REGNUM)
+  && (tid == exception_tid)
+  && (exception_address != 0)
+  && (th->context.ContextFlags == 0))
+    {
+      DEBUG_EVENTS (("gdb: special case PC fetch after break -> %p\n",
+                     (void *) exception_address));
+      regcache->raw_supply (r, (char *) &exception_address);
+      return;
+    }
+
+  DEBUG_EVENTS (("gdb: th=%p th->reload_context=%d r=%d\n", th, th->reload_context, r));
   if (th->reload_context)
     {
 #ifdef __CYGWIN__
@@ -610,6 +630,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
 	  memcpy (&th->context, &saved_context,
 		  __COPY_CONTEXT_SIZE);
 	  have_saved_context = 0;
+          DEBUG_EVENTS (("gdb: cygwin have_saved_context\n"));
 	}
       else
 #endif
@@ -628,6 +649,9 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
 	      dr[6] = th->context.Dr6;
 	      dr[7] = th->context.Dr7;
 	    }
+          DEBUG_EVENTS (("GetThreadContext: eip=0x%x flags=0x%x\n",
+                         th->context.Eip,
+                         th->context.EFlags));
 	}
       th->reload_context = 0;
     }
@@ -1157,6 +1181,8 @@ handle_exception (struct target_waitstatus *ourstatus)
   handle_exception_result result = HANDLE_EXCEPTION_HANDLED;
 
   ourstatus->kind = TARGET_WAITKIND_STOPPED;
+  exception_address = 0;
+  exception_tid = 0;
 
   /* Record the context of the current thread.  */
   thread_rec (current_event.dwThreadId, -1);
@@ -1253,7 +1279,9 @@ handle_exception (struct target_waitstatus *ourstatus)
       break;
     case EXCEPTION_PRIV_INSTRUCTION:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_PRIV_INSTRUCTION");
-      ourstatus->value.sig = GDB_SIGNAL_ILL;
+      ourstatus->value.sig = GDB_SIGNAL_TRAP; /* XX */
+      exception_address = (uintptr_t) rec->ExceptionAddress;
+      exception_tid = current_event.dwThreadId;
       break;
     case EXCEPTION_NONCONTINUABLE_EXCEPTION:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_NONCONTINUABLE_EXCEPTION");
@@ -1346,8 +1374,15 @@ windows_continue (DWORD continue_status, int id, int killed)
 	    th->context.Dr6 = DR6_CLEAR_VALUE;
 	    th->context.Dr7 = dr[7];
 	  }
-        DEBUG_EVENTS (("continue: th->context.ContextFlags=0x%x\n",
-                       (int) th->context.ContextFlags));
+      DEBUG_EVENTS (("continue: 1: th->context.ContextFlags=0x%x eip=0x%x "
+                     "flags=0x%x th->id=%d th->suspended=%d th->h=%p th=%p\n",
+                     (int) th->context.ContextFlags,
+                     th->context.Eip,
+                     th->context.EFlags,
+                     th->id,
+                     th->suspended,
+                     (void *) th->h,
+                     th));
 	if (th->context.ContextFlags)
 	  {
 	    DWORD ec = 0;
@@ -1370,8 +1405,9 @@ windows_continue (DWORD continue_status, int id, int killed)
 	    th->context.ContextFlags = 0;
 	  }
 	if (th->suspended > 0) {
-          DEBUG_EVENTS (("continue: ResumeThread\n"));
-	  (void) ResumeThread (th->h);
+          DWORD rc = ResumeThread (th->h);
+          DEBUG_EVENTS (("ResumeThread: th=%p th->h=%p rc=%x\n",
+                         th, (void *) th->h, rc));
         }
 	th->suspended = 0;
       }
@@ -1482,8 +1518,15 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	  th->context.EFlags |= FLAG_TRACE_BIT;
 	}
 
-      DEBUG_EVENTS (("continue: 2: th->context.ContextFlags=0x%x\n",
-                     (int) th->context.ContextFlags));
+      DEBUG_EVENTS (("continue: 2: th->context.ContextFlags=0x%x eip=0x%x "
+                     "flags=0x%x th->id=%d th->suspended=%d th->h=%p th=%p\n",
+                     (int) th->context.ContextFlags,
+                     th->context.Eip,
+                     th->context.EFlags,
+                     th->id,
+                     th->suspended,
+                     (void *) th->h,
+                     th));
       if (th->context.ContextFlags)
 	{
 	  if (debug_registers_changed)
@@ -1495,7 +1538,18 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	      th->context.Dr6 = DR6_CLEAR_VALUE;
 	      th->context.Dr7 = dr[7];
 	    }
-	  CHECK (SetThreadContext (th->h, &th->context));
+          CONTEXT readback;
+          memset(&readback, 0, sizeof(readback));
+          readback.ContextFlags = th->context.ContextFlags;
+          BOOL rc = SetThreadContext (th->h, &th->context);
+	  CHECK (rc);
+          DEBUG_EVENTS (("continue: SetThreadContext returned %d\n", rc));
+
+          rc = GetThreadContext (th->h, &readback);
+          DEBUG_EVENTS (("continue: rc=%d readback eip=0x%x flags=0x%x\n",
+                         rc,
+                         readback.Eip,
+                         readback.EFlags));
 	  th->context.ContextFlags = 0;
 	}
     }

@@ -4,11 +4,14 @@ set logging file log.txt
 set pagination off
 set logging on
 show version
-set debugmemory on
-set debugexec on
+
+
+## set debugmemory on
+## set debugexec on
 set debugexceptions on
 set debugevents on
 
+set $count = 0
 
 break test1
     commands
@@ -21,7 +24,28 @@ break test2
     commands
     silent
         printf "Reached test2\n"
-        info registers
+    cont
+end
+
+break test3
+    commands
+    silent
+        printf "Reached test3\n"
+    cont
+end
+
+break test4
+    commands
+    silent
+        printf "Reached test4\n"
+    cont
+end
+
+break test5
+    commands
+    silent
+        set $count = $count + 1
+        printf "Reached test5 - %d count\n", $count
     cont
 end
 
