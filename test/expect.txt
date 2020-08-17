@@ -1,68 +1,115 @@
 This version of GDB has been modified to avoid the use of Get/SetThreadContext
 warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test1
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test2
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test3 - 1 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test3 - 2 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test3 - 3 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test3 - 4 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test4 - 5 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test4 - 6 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test4 - 7 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test4 - 8 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test5 - 9 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test5 - 10 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test5 - 11 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test5 - 12 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test6 - 13 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test6 - 14 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test6 - 15 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test6 - 16 count
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test7
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test8
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test9 - 17 count
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
 Reached test9 - 18 count
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
 Reached test9 - 19 count
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
 Reached test9 - 20 count
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test10
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test11
-warning: GetThreadContext called
 warning: SetThreadContext called due to register update
+warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test12 - 21 count
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
 Reached test12 - 22 count
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
 Reached test12 - 23 count
-warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
-Reached test12 - 24 count
 warning: GetThreadContext called
+Reached test12 - 24 count
 warning: SetThreadContext called in order to resume with hardware single step
 warning: GetThreadContext called
 Reached test13
 warning: GetThreadContext called
 warning: GetThreadContext called
+warning: GetThreadContext called
 Reached test14
+warning: GetThreadContext called
+warning: GetThreadContext called
 warning: GetThreadContext called
 Reached test15 and $ecx = 0
 warning: GetThreadContext called
 Reached test16 and test_variable = 1
+warning: GetThreadContext called
 Reached test17
+warning: GetThreadContext called
+warning: GetThreadContext called
 Print registers
 warning: GetThreadContext called

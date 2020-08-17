@@ -606,6 +606,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
   if ((r == I386_EIP_REGNUM)
   && (tid == exception_tid)
   && (exception_address != 0)
+  && false 
   && (th->context.ContextFlags == 0))
     {
       DEBUG_EVENTS (("gdb: special case PC fetch after break -> %p\n",
@@ -650,6 +651,13 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
 #ifndef USE_INT3          
           warning ("GetThreadContext called (tid=0x%x, eip=0x%x)",
                    th->id, th->context.Eip);
+          if ((tid == exception_tid)
+          && (exception_address != 0)
+          && (th->context.Eip != exception_address))
+            {
+              warning ("exception_address would have been wrong (0x%x)",
+                       exception_address);
+            }
 #endif
 	}
       th->reload_context = 0;
@@ -660,6 +668,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
       windows_fetch_one_register (regcache, th, r);
   else
     windows_fetch_one_register (regcache, th, r);
+
 }
 
 /* Collect the register number R from the given regcache, and store
