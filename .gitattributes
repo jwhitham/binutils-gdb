@@ -1,5 +1,7 @@
 # -*- conf -*-
 
+*.texi text eol=lf
+
 ## Set merge driver for ChangeLog files 
 # See gnulib's lib/git-merge-changelog.c (or git-merge-changelog(1))
 # for per-user setup instructions.

@@ -1,0 +1,29 @@
+
+set logging overwrite on
+set logging file log.txt
+set pagination off
+set logging on
+show version
+set debugmemory on
+set debugexec on
+set debugexceptions on
+set debugevents on
+
+
+break test1
+    commands
+    silent
+        printf "Reached test1\n"
+    cont
+end
+
+break test2
+    commands
+    silent
+        printf "Reached test2\n"
+        info registers
+    cont
+end
+
+run
+

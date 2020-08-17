@@ -1328,10 +1328,14 @@ windows_continue (DWORD continue_status, int id, int killed)
 		  continue_status == DBG_CONTINUE ?
 		  "DBG_CONTINUE" : "DBG_EXCEPTION_NOT_HANDLED"));
 
-  for (th = &thread_head; (th = th->next) != NULL;)
+  for (th = &thread_head; (th = th->next) != NULL;) {
+    DEBUG_EVENTS (("continue: id=%d th->id=%d th->suspended=%d\n",
+                   id, th->id, th->suspended));
     if ((id == -1 || id == (int) th->id)
 	&& th->suspended)
       {
+        DEBUG_EVENTS (("continue: debug_registers_changed=%d\n",
+                       debug_registers_changed));
 	if (debug_registers_changed)
 	  {
 	    th->context.ContextFlags |= CONTEXT_DEBUG_REGISTERS;
@@ -1342,25 +1346,38 @@ windows_continue (DWORD continue_status, int id, int killed)
 	    th->context.Dr6 = DR6_CLEAR_VALUE;
 	    th->context.Dr7 = dr[7];
 	  }
+        DEBUG_EVENTS (("continue: th->context.ContextFlags=0x%x\n",
+                       (int) th->context.ContextFlags));
 	if (th->context.ContextFlags)
 	  {
 	    DWORD ec = 0;
+            BOOL rc = GetExitCodeThread (th->h, &ec);
 
-	    if (GetExitCodeThread (th->h, &ec)
-		&& ec == STILL_ACTIVE)
+            DEBUG_EVENTS (("continue: GetExitCodeThread "
+                           "return %d ec=0x%x\n",
+                           (int) rc, ec));
+	    if (rc && ec == STILL_ACTIVE)
 	      {
 		BOOL status = SetThreadContext (th->h, &th->context);
 
+                DEBUG_EVENTS (("continue: SetThreadContext "
+                               "return %d killed=%d\n",
+                               (int) status, killed));
+
 		if (!killed)
 		  CHECK (status);
-	      }
+              }
 	    th->context.ContextFlags = 0;
 	  }
-	if (th->suspended > 0)
+	if (th->suspended > 0) {
+          DEBUG_EVENTS (("continue: ResumeThread\n"));
 	  (void) ResumeThread (th->h);
+        }
 	th->suspended = 0;
       }
+  }
 
+  DEBUG_EVENTS (("continue: ContinueDebugEvent\n"));
   res = ContinueDebugEvent (current_event.dwProcessId,
 			    current_event.dwThreadId,
 			    continue_status);
@@ -1452,6 +1469,8 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 
   /* Get context for currently selected thread.  */
   th = thread_rec (inferior_ptid.tid (), FALSE);
+  DEBUG_EVENTS (("continue: th=%p step=%d resume_all=%d\n", th, step,
+                 resume_all));
   if (th)
     {
       if (step)
@@ -1463,6 +1482,8 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	  th->context.EFlags |= FLAG_TRACE_BIT;
 	}
 
+      DEBUG_EVENTS (("continue: 2: th->context.ContextFlags=0x%x\n",
+                     (int) th->context.ContextFlags));
       if (th->context.ContextFlags)
 	{
 	  if (debug_registers_changed)
