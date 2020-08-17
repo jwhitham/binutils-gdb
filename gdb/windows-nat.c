@@ -595,13 +595,12 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
   DWORD tid = regcache->ptid ().tid ();
   windows_thread_info *th = thread_rec (tid, TRUE);
 
-  DEBUG_EVENTS (("gdb: fetch_registers for tid=0x%x\n", tid));
-
   /* Check if TH exists.  Windows sometimes uses a non-existent
      thread id in its events.  */
   if (th == NULL)
     return;
 
+#ifndef USE_INT3          
   if ((r == I386_EIP_REGNUM)
   && (tid == exception_tid)
   && (exception_address != 0)
@@ -612,8 +611,8 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
       regcache->raw_supply (r, (char *) &exception_address);
       return;
     }
+#endif
 
-  DEBUG_EVENTS (("gdb: th=%p th->reload_context=%d r=%d\n", th, th->reload_context, r));
   if (th->reload_context)
     {
 #ifdef __CYGWIN__
@@ -644,6 +643,9 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
 	      dr[6] = th->context.Dr6;
 	      dr[7] = th->context.Dr7;
 	    }
+#ifndef USE_INT3          
+          warning ("GetThreadContext called in order to fetch registers");
+#endif
 	}
       th->reload_context = 0;
     }
@@ -1252,6 +1254,10 @@ handle_exception (struct target_waitstatus *ourstatus)
     case EXCEPTION_BREAKPOINT:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_BREAKPOINT");
       ourstatus->value.sig = GDB_SIGNAL_TRAP;
+#ifndef USE_INT3          
+      exception_address = 1 + (uintptr_t) rec->ExceptionAddress;
+      exception_tid = current_event.dwThreadId;
+#endif
       break;
     case DBG_CONTROL_C:
       DEBUG_EXCEPTION_SIMPLE ("DBG_CONTROL_C");
@@ -1264,6 +1270,10 @@ handle_exception (struct target_waitstatus *ourstatus)
     case EXCEPTION_SINGLE_STEP:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_SINGLE_STEP");
       ourstatus->value.sig = GDB_SIGNAL_TRAP;
+#ifndef USE_INT3          
+      exception_address = 1 + (uintptr_t) rec->ExceptionAddress;
+      exception_tid = current_event.dwThreadId;
+#endif
       break;
     case EXCEPTION_ILLEGAL_INSTRUCTION:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_ILLEGAL_INSTRUCTION");
@@ -1271,9 +1281,13 @@ handle_exception (struct target_waitstatus *ourstatus)
       break;
     case EXCEPTION_PRIV_INSTRUCTION:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_PRIV_INSTRUCTION");
-      ourstatus->value.sig = GDB_SIGNAL_TRAP; /* XX */
+#ifdef USE_INT3          
+      ourstatus->value.sig = GDB_SIGNAL_ILL;
+#else
+      ourstatus->value.sig = GDB_SIGNAL_TRAP;
       exception_address = (uintptr_t) rec->ExceptionAddress;
       exception_tid = current_event.dwThreadId;
+#endif
       break;
     case EXCEPTION_NONCONTINUABLE_EXCEPTION:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_NONCONTINUABLE_EXCEPTION");
@@ -1373,6 +1387,10 @@ windows_continue (DWORD continue_status, int id, int killed)
 
 		if (!killed)
 		  CHECK (status);
+
+#ifndef USE_INT3          
+                warning ("SetThreadContext called in order to resume thread");
+#endif
 	      }
 	    th->context.ContextFlags = 0;
 	  }
@@ -1496,6 +1514,18 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	    }
 	  CHECK (SetThreadContext (th->h, &th->context));
 	  th->context.ContextFlags = 0;
+#ifndef USE_INT3          
+          if (step)
+            {
+              warning ("SetThreadContext called in order to "
+                       "resume (with hardware single step)");
+            }
+          else
+            {
+              warning ("SetThreadContext called in order to "
+                       "resume (no single step)");
+            }
+#endif
 	}
     }
 
