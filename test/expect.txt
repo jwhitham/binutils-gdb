@@ -1,4 +1,5 @@
 This version of GDB has been modified to avoid the use of Get/SetThreadContext
+warning: GetThreadContext called
 Reached test1
 Reached test2
 Reached test3 - 1 count
@@ -40,7 +41,7 @@ warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
 Reached test11
 warning: GetThreadContext called
-warning: SetThreadContext called
+warning: SetThreadContext called due to register update
 Reached test12 - 21 count
 warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
@@ -53,6 +54,15 @@ warning: SetThreadContext called in order to resume with hardware single step
 Reached test12 - 24 count
 warning: GetThreadContext called
 warning: SetThreadContext called in order to resume with hardware single step
+warning: GetThreadContext called
+Reached test13
+warning: GetThreadContext called
+warning: GetThreadContext called
+Reached test14
+warning: GetThreadContext called
+Reached test15 and $ecx = 0
+warning: GetThreadContext called
+Reached test16 and test_variable = 1
+Reached test17
 Print registers
 warning: GetThreadContext called
-warning: SetThreadContext called

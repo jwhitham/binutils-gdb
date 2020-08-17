@@ -94,6 +94,34 @@ test11:
 test12:
     loop test12
 
+/* test13 is a conditional breakpoint (condition = true) based on a register */
+test13:
+    nop
+/* test13x is a conditional breakpoint (condition = false) based on a register */
+test13x:
+    nop
+/* test13y is a conditional breakpoint (condition = false) based on a register */
+test13y:
+    nop
+/* test14 is a conditional breakpoint (condition = true) based on a global variable */
+test14:
+    nop
+/* test14x is a conditional breakpoint (condition = false) based on a global variable */
+test14x:
+    nop
+/* test14y is a conditional breakpoint (condition = false) based on a global variable */
+test14y:
+    nop
+/* test15 reads registers */
+test15:
+    nop
+/* test16 reads a global variable */
+test16:
+    nop
+/* test17 is a conditional breakpoint based on a GDB variable */
+test17:
+    nop
+
 /* add more tests here */
     nop
 

@@ -226,6 +226,7 @@ typedef struct windows_thread_info_struct
     int suspended;
     int reload_context;
     CONTEXT context;
+    CONTEXT loaded_context;
   }
 windows_thread_info;
 
@@ -476,6 +477,7 @@ windows_add_thread (ptid_t ptid, HANDLE h, void *tlb, bool main_thread_p)
       th->context.Dr6 = DR6_CLEAR_VALUE;
       th->context.Dr7 = dr[7];
       CHECK (SetThreadContext (th->h, &th->context));
+      memcpy (&th->loaded_context, &th->context, sizeof(CONTEXT));
       th->context.ContextFlags = 0;
     }
   return th;
@@ -615,6 +617,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
 
   if (th->reload_context)
     {
+      DEBUG_EVENTS (("gdb: fetch_registers with reload_context, r=%d\n", r));
 #ifdef __CYGWIN__
       if (have_saved_context)
 	{
@@ -643,6 +646,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
 	      dr[6] = th->context.Dr6;
 	      dr[7] = th->context.Dr7;
 	    }
+          memcpy (&th->loaded_context, &th->context, sizeof(CONTEXT));
 #ifndef USE_INT3          
           warning ("GetThreadContext called (tid=0x%x, eip=0x%x)",
                    th->id, th->context.Eip);
@@ -1377,7 +1381,8 @@ windows_continue (DWORD continue_status, int id, int killed)
 	    th->context.Dr6 = DR6_CLEAR_VALUE;
 	    th->context.Dr7 = dr[7];
 	  }
-	if (th->context.ContextFlags)
+	if (th->context.ContextFlags
+            && (0 != memcmp (&th->loaded_context, &th->context, sizeof(CONTEXT))))
 	  {
 	    DWORD ec = 0;
 
@@ -1390,12 +1395,14 @@ windows_continue (DWORD continue_status, int id, int killed)
 		  CHECK (status);
 
 #ifndef USE_INT3          
-                warning ("SetThreadContext called (tid=0x%x, eip=0x%x)",
+                warning ("SetThreadContext called due to register update "
+                         "(tid=0x%x, eip=0x%x)",
                          th->id, th->context.Eip);
 #endif
 	      }
-	    th->context.ContextFlags = 0;
 	  }
+        memcpy (&th->loaded_context, &th->context, sizeof(CONTEXT));
+	th->context.ContextFlags = 0;
 	if (th->suspended > 0)
 	  (void) ResumeThread (th->h);
 	th->suspended = 0;
@@ -1503,7 +1510,8 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	  th->context.EFlags |= FLAG_TRACE_BIT;
 	}
 
-      if (th->context.ContextFlags)
+      if (th->context.ContextFlags
+          && (0 != memcmp (&th->loaded_context, &th->context, sizeof(CONTEXT))))
 	{
 	  if (debug_registers_changed)
 	    {
@@ -1515,7 +1523,6 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	      th->context.Dr7 = dr[7];
 	    }
 	  CHECK (SetThreadContext (th->h, &th->context));
-	  th->context.ContextFlags = 0;
 #ifndef USE_INT3          
           if (step)
             {
@@ -1525,11 +1532,14 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
             }
           else
             {
-              warning ("SetThreadContext called (tid=0x%x, eip=0x%x)",
+              warning ("SetThreadContext called due to register update "
+                       "(tid=0x%x, eip=0x%x)",
                        th->id, th->context.Eip);
             }
 #endif
 	}
+      memcpy (&th->loaded_context, &th->context, sizeof(CONTEXT));
+      th->context.ContextFlags = 0;
     }
 
   /* Allow continuing with the same signal that interrupted us.
