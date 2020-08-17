@@ -1397,7 +1397,7 @@ windows_continue (DWORD continue_status, int id, int killed)
 
             if (0 == memcmp (&th->loaded_context, &th->context, sizeof(CONTEXT)))
               {
-	        th->context.ContextFlags = 0;
+                th->context.ContextFlags &= ~CONTEXT_DEBUG_REGISTERS;
                 change = false;
               }
 	    if (GetExitCodeThread (th->h, &ec)
@@ -1546,7 +1546,7 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	    }
           if (0 == memcmp (&th->loaded_context, &th->context, sizeof(CONTEXT)))
             {
-	      th->context.ContextFlags = 0;
+              th->context.ContextFlags &= ~CONTEXT_DEBUG_REGISTERS;
               change = false;
             }
 	  CHECK (SetThreadContext (th->h, &th->context));
