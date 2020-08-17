@@ -10,7 +10,7 @@ gcc -o x.exe -g main.c test.s
 
 egrep '^(This version|Reached test|Print registers|warning: .etThreadContext called)' < log.txt | \
         sed -e 's/ *(tid=.*$//' > result.txt
-diff result.txt expect.txt
+diff -w result.txt expect.txt
 
 echo "OK!"
 

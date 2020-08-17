@@ -606,7 +606,6 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
   if ((r == I386_EIP_REGNUM)
   && (tid == exception_tid)
   && (exception_address != 0)
-  && false 
   && (th->context.ContextFlags == 0))
     {
       DEBUG_EVENTS (("gdb: special case PC fetch after break -> %p\n",
@@ -651,13 +650,6 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
 #ifndef USE_INT3          
           warning ("GetThreadContext called (tid=0x%x, eip=0x%x)",
                    th->id, th->context.Eip);
-          if ((tid == exception_tid)
-          && (exception_address != 0)
-          && (th->context.Eip != exception_address))
-            {
-              warning ("exception_address would have been wrong (0x%x)",
-                       exception_address);
-            }
 #endif
 	}
       th->reload_context = 0;
@@ -668,7 +660,6 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
       windows_fetch_one_register (regcache, th, r);
   else
     windows_fetch_one_register (regcache, th, r);
-
 }
 
 /* Collect the register number R from the given regcache, and store
@@ -1390,16 +1381,11 @@ windows_continue (DWORD continue_status, int id, int killed)
 	    th->context.Dr6 = DR6_CLEAR_VALUE;
 	    th->context.Dr7 = dr[7];
 	  }
-	if (th->context.ContextFlags)
+	if (th->context.ContextFlags
+            && (0 != memcmp (&th->loaded_context, &th->context, sizeof(CONTEXT))))
 	  {
 	    DWORD ec = 0;
-            bool change = true;
 
-            if (0 == memcmp (&th->loaded_context, &th->context, sizeof(CONTEXT)))
-              {
-                th->context.ContextFlags &= ~CONTEXT_DEBUG_REGISTERS;
-                change = false;
-              }
 	    if (GetExitCodeThread (th->h, &ec)
 		&& ec == STILL_ACTIVE)
 	      {
@@ -1409,16 +1395,9 @@ windows_continue (DWORD continue_status, int id, int killed)
 		  CHECK (status);
 
 #ifndef USE_INT3          
-                if (!change)
-                  {
-                    DEBUG_EXEC (("gdb: SetThreadContext without effect\n"));
-                  }
-                else
-                  {
-                    warning ("SetThreadContext called due to register update "
-                             "(tid=0x%x, eip=0x%x)",
-                             th->id, th->context.Eip);
-                  }
+                warning ("SetThreadContext called due to register update "
+                         "(tid=0x%x, eip=0x%x)",
+                         th->id, th->context.Eip);
 #endif
 	      }
 	  }
@@ -1531,10 +1510,9 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	  th->context.EFlags |= FLAG_TRACE_BIT;
 	}
 
-      if (th->context.ContextFlags)
+      if (th->context.ContextFlags
+          && (0 != memcmp (&th->loaded_context, &th->context, sizeof(CONTEXT))))
 	{
-          bool change = true;
-
 	  if (debug_registers_changed)
 	    {
 	      th->context.Dr0 = dr[0];
@@ -1544,18 +1522,9 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	      th->context.Dr6 = DR6_CLEAR_VALUE;
 	      th->context.Dr7 = dr[7];
 	    }
-          if (0 == memcmp (&th->loaded_context, &th->context, sizeof(CONTEXT)))
-            {
-              th->context.ContextFlags &= ~CONTEXT_DEBUG_REGISTERS;
-              change = false;
-            }
 	  CHECK (SetThreadContext (th->h, &th->context));
 #ifndef USE_INT3          
-          if (!change)
-            {
-              DEBUG_EXEC (("gdb: SetThreadContext without effect\n"));
-            }
-          else if (step)
+          if (step)
             {
               warning ("SetThreadContext called in order to "
                        "resume with hardware single step (tid=0x%x, eip=0x%x)",
