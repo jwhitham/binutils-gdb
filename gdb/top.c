@@ -1375,7 +1375,10 @@ print_gdb_version (struct ui_file *stream, bool interactive)
   fprintf_filtered (stream, "\
 License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\
 \nThis is free software: you are free to change and redistribute it.\n\
-There is NO WARRANTY, to the extent permitted by law.");
+There is NO WARRANTY, to the extent permitted by law.\n\
+This version of GDB has been modified to avoid the use of Get/SetThreadContext\n\
+when handling breakpoints and single-stepping, so as to prevent conflicts with\n\
+other code which also uses these features.");
 
   if (!interactive)
     return;
