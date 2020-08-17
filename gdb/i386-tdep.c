@@ -8397,16 +8397,6 @@ i386_type_align (struct gdbarch *gdbarch, struct type *type)
 }
 
 
-static int32_t get_disp8(uint8_t * arg)
-{
-  return *((int8_t *) arg);
-}
-
-static int32_t get_disp32(uint8_t * arg)
-{
-  return *((int32_t *) arg);
-}
-
 static std::vector<CORE_ADDR>
 i386_software_single_step (struct regcache *regcache)
 {
@@ -8428,16 +8418,29 @@ i386_software_single_step (struct regcache *regcache)
    * so if we cannot determine the destination(s) statically, we revert to
    * hardware single step. */
 
+  CORE_ADDR target = 0;
+  bool conditional = false;
+  bool unconditional = false;
+
   switch (insn[0]) {
      case 0x70: case 0x71: case 0x72: case 0x73:
      case 0x74: case 0x75: case 0x76: case 0x77:
      case 0x78: case 0x79: case 0x7a: case 0x7b:
      case 0x7c: case 0x7d: case 0x7e: case 0x7f:
        /* short conditional branches */
-       return {loc + 2 + get_disp8(&insn[1]), loc + 2};
+       conditional = true;
+       target = loc + 2 + *((int8_t *)&insn[1]);
+       break;
+     case 0xe0: case 0xe1: case 0xe2:
+       /* LOOP instructions */
+       conditional = true;
+       target = loc + 2 + *((int8_t *)&insn[1]);
+       break;
      case 0xeb:
        /* short unconditional branch */
-       return {loc + 2 + get_disp8(&insn[1])};
+       unconditional = true;
+       target = loc + 2 + *((int8_t *)&insn[1]);
+       break;
      case 0x0f:
        /* Two-byte instructions */
        switch (insn[1]) {
@@ -8446,23 +8449,45 @@ i386_software_single_step (struct regcache *regcache)
          case 0x88: case 0x89: case 0x8a: case 0x8b:
          case 0x8c: case 0x8d: case 0x8e: case 0x8f:
            /* long conditional branches */
-           return {loc + 6 + get_disp32(&insn[2]), loc + 6};
+           conditional = true;
+           target = loc + 6 + *((int32_t *)&insn[2]);
+           break;
          default:
            break;
        }
        break;
      case 0xe9: case 0xe8:
        /* long jump and call */
-       return {loc + 5 + get_disp32(&insn[2])};
+       unconditional = true;
+       target = loc + 5 + *((int32_t *)&insn[1]);
+       break;
      case 0xc3: case 0xf3:
        /* ret and repz ret */
-       return {};
+       unconditional = true;
+       break;
      case 0xff:
        /* indirect jumps and calls */
-       return {};
+       unconditional = true;
+       break;
      default:
        break;
   }
+
+
+  if (unconditional || conditional)
+    {
+      /* there is a branch */
+      if (!target)
+        return {};  /* branch target is unknown */
+
+      if (target == loc)
+        return {};  /* branch target is the branch itself */
+
+      if (conditional)
+        return {target, loc + size};
+      else
+        return {target};
+    }
 
   /* Instruction is NOT control flow */
   return {loc + size};

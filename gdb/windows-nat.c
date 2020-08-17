@@ -644,7 +644,8 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
 	      dr[7] = th->context.Dr7;
 	    }
 #ifndef USE_INT3          
-          warning ("GetThreadContext called in order to fetch registers");
+          warning ("GetThreadContext called (tid=0x%x, eip=0x%x)",
+                   th->id, th->context.Eip);
 #endif
 	}
       th->reload_context = 0;
@@ -1271,7 +1272,7 @@ handle_exception (struct target_waitstatus *ourstatus)
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_SINGLE_STEP");
       ourstatus->value.sig = GDB_SIGNAL_TRAP;
 #ifndef USE_INT3          
-      exception_address = 1 + (uintptr_t) rec->ExceptionAddress;
+      exception_address = (uintptr_t) rec->ExceptionAddress;
       exception_tid = current_event.dwThreadId;
 #endif
       break;
@@ -1389,7 +1390,8 @@ windows_continue (DWORD continue_status, int id, int killed)
 		  CHECK (status);
 
 #ifndef USE_INT3          
-                warning ("SetThreadContext called in order to resume thread");
+                warning ("SetThreadContext called (tid=0x%x, eip=0x%x)",
+                         th->id, th->context.Eip);
 #endif
 	      }
 	    th->context.ContextFlags = 0;
@@ -1518,12 +1520,13 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
           if (step)
             {
               warning ("SetThreadContext called in order to "
-                       "resume (with hardware single step)");
+                       "resume with hardware single step (tid=0x%x, eip=0x%x)",
+                       th->id, th->context.Eip);
             }
           else
             {
-              warning ("SetThreadContext called in order to "
-                       "resume (no single step)");
+              warning ("SetThreadContext called (tid=0x%x, eip=0x%x)",
+                       th->id, th->context.Eip);
             }
 #endif
 	}

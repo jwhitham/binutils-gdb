@@ -8,8 +8,8 @@ show version
 
 ## set debugmemory on
 ## set debugexec on
-set debugexceptions on
-set debugevents on
+## set debugexceptions on
+## set debugevents on
 
 set $count = 0
 
@@ -30,14 +30,16 @@ end
 break test3
     commands
     silent
-        printf "Reached test3\n"
+        set $count = $count + 1
+        printf "Reached test3 - %d count\n", $count
     cont
 end
 
 break test4
     commands
     silent
-        printf "Reached test4\n"
+        set $count = $count + 1
+        printf "Reached test4 - %d count\n", $count
     cont
 end
 
@@ -49,5 +51,66 @@ break test5
     cont
 end
 
-run
+break test6
+    commands
+    silent
+        set $count = $count + 1
+        printf "Reached test6 - %d count\n", $count
+    cont
+end
 
+break test7
+    commands
+    silent
+        printf "Reached test7\n"
+    cont
+end
+
+break test8
+    commands
+    silent
+        printf "Reached test8\n"
+    cont
+end
+
+break test9
+    commands
+    silent
+        set $count = $count + 1
+        printf "Reached test9 - %d count\n", $count
+    cont
+end
+
+break test10
+    commands
+    silent
+        printf "Reached test10\n"
+    cont
+end
+
+break test11
+    commands
+    silent
+        printf "Reached test11\n"
+        set $eax = $ecx
+    cont
+end
+
+break test12
+    commands
+    silent
+        set $count = $count + 1
+        printf "Reached test12 - %d count\n", $count
+    cont
+end
+
+break end_of_test
+    commands
+    silent
+        printf "Print registers\n"
+        info registers
+        printf "Reached end_of_test\n"
+    cont
+end
+
+run
