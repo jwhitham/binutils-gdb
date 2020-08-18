@@ -615,10 +615,9 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
     }
 #endif
 
-  if (1) //th->reload_context)
+  if (th->reload_context)
     {
-      DEBUG_EVENTS (("gdb: fetch_registers with reload_context=%d, r=%d\n",
-                     th->reload_context, r));
+      DEBUG_EVENTS (("gdb: fetch_registers with reload_context, r=%d\n", r));
 #ifdef __CYGWIN__
       if (have_saved_context)
 	{
