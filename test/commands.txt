@@ -5,8 +5,6 @@ set pagination off
 set logging on
 show version
 
-maint show target-non-stop
-
 ## set debugmemory on
 ## set debugexec on
 ## set debugexceptions on
@@ -14,168 +12,13 @@ maint show target-non-stop
 
 set $count = 0
 
-break test1
-    commands
-    silent
-        printf "Reached test1\n"
-    cont
-end
-
-break test2
-    commands
-    silent
-        printf "Reached test2\n"
-    cont
-end
-
-break test3
+break breakpoint
     commands
     silent
         set $count = $count + 1
-        printf "Reached test3 - %d count\n", $count
     cont
 end
 
-break test4
-    commands
-    silent
-        set $count = $count + 1
-        printf "Reached test4 - %d count\n", $count
-    cont
-end
-
-break test5
-    commands
-    silent
-        set $count = $count + 1
-        printf "Reached test5 - %d count\n", $count
-    cont
-end
-
-break test6
-    commands
-    silent
-        set $count = $count + 1
-        printf "Reached test6 - %d count\n", $count
-    cont
-end
-
-break test7
-    commands
-    silent
-        printf "Reached test7\n"
-    cont
-end
-
-break test8
-    commands
-    silent
-        printf "Reached test8\n"
-    cont
-end
-
-break test9
-    commands
-    silent
-        set $count = $count + 1
-        printf "Reached test9 - %d count\n", $count
-    cont
-end
-
-break test10
-    commands
-    silent
-        printf "Reached test10\n"
-    cont
-end
-
-break test11
-    commands
-    silent
-        printf "Reached test11\n"
-        set $eax = $ecx
-    cont
-end
-
-break test12
-    commands
-    silent
-        set $count = $count + 1
-        printf "Reached test12 - %d count\n", $count
-    cont
-end
-
-break test13 if $ecx != 0x12345
-    commands
-    silent
-        printf "Reached test13\n"
-    cont
-end
-
-break test13x if $ecx == 0x12345
-    commands
-    silent
-        printf "Reached test13x WHICH SHOULD NEVER HAPPEN\n"
-    kill
-end
-
-break test13y if $ecx == 0x12345
-    commands
-    silent
-        printf "Reached test13y WHICH SHOULD NEVER HAPPEN\n"
-    kill
-end
-
-break test14 if test_variable != 0x12345
-    commands
-    silent
-        printf "Reached test14\n"
-    cont
-end
-
-break test14x if test_variable == 0x12345
-    commands
-    silent
-        printf "Reached test14x WHICH SHOULD NEVER HAPPEN\n"
-    kill
-end
-
-break test14y if test_variable == 0x12345
-    commands
-    silent
-        printf "Reached test14y WHICH SHOULD NEVER HAPPEN\n"
-    kill
-end
-
-break test15
-    commands
-    silent
-        printf "Reached test15 and $ecx = %d\n", $ecx
-    cont
-end
-
-break test16
-    commands
-    silent
-        set $ecx = $ecx
-        printf "Reached test16 and test_variable = %d\n", test_variable
-    cont
-end
-
-break test17 if $count > 1
-    commands
-    silent
-        printf "Reached test17\n"
-    cont
-end
-
-break end_of_test
-    commands
-    silent
-        printf "Print registers\n"
-        info registers
-        printf "Reached end_of_test\n"
-    cont
-end
 
 run
+print $count
