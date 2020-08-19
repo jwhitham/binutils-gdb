@@ -21,10 +21,11 @@ unsigned safe_step_finished = 0;
 unsigned safe_int_unrestored = 0;
 unsigned safe_after = 0;
 unsigned safe_elsewhere = 0;
+unsigned false_positives = 0;
 
 extern void asm_loop (void);
 extern void breakpoint (void);
-extern int avoid_danger (void);
+extern int detect_danger (void);
 
 void error (const char * text)
 {
@@ -46,6 +47,7 @@ DWORD WINAPI thread2 (LPVOID arg)
     CONTEXT context;
     BOOL bp_present;
     BOOL trap_flag;
+    BOOL avoid_danger;
     DWORD bp_loc = (DWORD) ((intptr_t) ((void *) breakpoint));
 
     memset (&context, 0, sizeof (CONTEXT));
@@ -67,6 +69,16 @@ DWORD WINAPI thread2 (LPVOID arg)
         bp_present = ((((volatile uint8_t *) breakpoint)[0]) == 0xcc);
         trap_flag = !!(context.EFlags & 0x100);
 
+        if (((context.Eip == bp_loc) || (context.Eip == 1 + bp_loc))
+        && bp_present) {
+            /* no need for T3X danger check as interrupt would be detected at EIP
+             * or EIP - 1 */
+            avoid_danger = TRUE;
+        } else {
+            /* Check for danger with T3X instruction */
+            avoid_danger = detect_danger();
+        }
+
         if (context.Eip == bp_loc) {
             if (trap_flag) {
                 if (bp_present) {
@@ -75,7 +87,7 @@ DWORD WINAPI thread2 (LPVOID arg)
                 } else {
                     /* Danger, TF is set, we're about to step */
                     /* thread1: State M4 */
-                    if (avoid_danger()) {
+                    if (avoid_danger) {
                         safe_step_pending++;
                     } else {
                         danger_step_pending++;
@@ -104,7 +116,7 @@ DWORD WINAPI thread2 (LPVOID arg)
                 } else {
                     /* Danger: interrupt removed, not in single step. */
                     /* thread1: State M3 */
-                    if (avoid_danger()) {
+                    if (avoid_danger) {
                         safe_int_removed++;
                     } else {
                         danger_int_removed++;
@@ -115,7 +127,7 @@ DWORD WINAPI thread2 (LPVOID arg)
             if (trap_flag) {
                 /* Danger, TF is still set */
                 /* thread1: State M5 */
-                if (avoid_danger()) {
+                if (avoid_danger) {
                     safe_step_finished++;
                 } else {
                     danger_step_finished++;
@@ -123,11 +135,15 @@ DWORD WINAPI thread2 (LPVOID arg)
             } else {
                 if (bp_present) {
                     /* Safe: we're clear of the breakpoint */
-                    safe_after++;
+                    if (avoid_danger) {
+                        false_positives++;
+                    } else {
+                        safe_after++;
+                    }
                 } else {
                     /* Danger: BP not restored */
                     /* thread1: State M6 */
-                    if (avoid_danger()) {
+                    if (avoid_danger) {
                         safe_int_unrestored++;
                     } else {
                         danger_int_unrestored++;
@@ -141,7 +157,11 @@ DWORD WINAPI thread2 (LPVOID arg)
             } else {
                 if (bp_present) {
                     /* Safe: we're clear of the breakpoint */
-                    safe_elsewhere++;
+                    if (avoid_danger) {
+                        false_positives++;
+                    } else {
+                        safe_elsewhere++;
+                    }
                 } else {
                     /* Danger: BP not restored */
                     danger_unknown++;
@@ -187,6 +207,7 @@ int main (void)
     printf ("M6 danger_int_unrestored = %u\n", danger_int_unrestored);
     printf ("   safe_after = %u\n", safe_after);
     printf ("   safe_elsewhere = %u\n", safe_elsewhere);
+    printf ("   false_positives = %u\n", false_positives);
     printf ("?? danger_unknown = %u\n", danger_unknown);
     return 0;
 }

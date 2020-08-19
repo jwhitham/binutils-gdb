@@ -3,8 +3,8 @@
 .global _asm_loop
 .global breakpoint
 .global _breakpoint
-.global avoid_danger
-.global _avoid_danger
+.global detect_danger
+.global _detect_danger
 
 asm_loop:
 _asm_loop:
@@ -30,7 +30,7 @@ _breakpoint:
     ret
 
 
-avoid_danger:
-_avoid_danger:
+detect_danger:
+_detect_danger:
     in $0xcc, %eax
     ret
