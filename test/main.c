@@ -2,18 +2,24 @@
 #include <windows.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-#define AREA_SIZE 20
+#include <stdint.h>
 
 volatile BOOL run = TRUE;
 HANDLE thread1_handle;
 HANDLE thread2_handle;
-DWORD start;
-DWORD end;
 
-unsigned counter[AREA_SIZE];
+unsigned danger_unreachable = 0;
+unsigned danger_int_pending = 0;
+unsigned danger_int_triggered = 0;
+unsigned danger_int_removed = 0;
+unsigned danger_step_pending = 0;
+unsigned danger_step_finished = 0;
+unsigned danger_int_unrestored = 0;
+unsigned safe_after = 0;
+unsigned safe_elsewhere = 0;
 
 extern void asm_loop (void);
+extern void breakpoint (void);
 
 void error (const char * text)
 {
@@ -33,21 +39,96 @@ DWORD WINAPI thread1 (LPVOID arg)
 DWORD WINAPI thread2 (LPVOID arg)
 {
     CONTEXT context;
+    BOOL bp_present;
+    BOOL trap_flag;
+    DWORD bp_loc = (DWORD) ((intptr_t) ((void *) breakpoint));
+
     memset (&context, 0, sizeof (CONTEXT));
 
     while (run) {
+        /* thread2: State T1 */
         if (SuspendThread (thread1_handle) == (DWORD) -1) {
             error ("SuspendThread");
         }
         context.ContextFlags =
                 CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_i386;
 
+        /* thread2: State T2 */
         if (!GetThreadContext (thread1_handle, &context)) {
             error ("GetThreadContext");
         }
 
-        if ((context.Eip >= start) && (context.Eip < end)) {
-            counter[context.Eip - start] ++;
+        /* thread2: State T3 */
+        bp_present = ((((volatile uint8_t *) breakpoint)[0]) == 0xcc);
+        trap_flag = !!(context.EFlags & 0x100);
+
+        if (context.Eip == bp_loc) {
+            if (trap_flag) {
+                if (bp_present) {
+                    /* Step pending on a breakpoint? Should not happen. */
+                    danger_unreachable++;
+                } else {
+                    /* Danger, TF is set, we're about to step */
+                    /* thread1: State M4 */
+                    danger_step_pending++;
+                }
+            } else {
+                if (bp_present) {
+                    /* Danger: About to run the interrupt */
+                    /* thread1: State M1 */
+                    danger_int_pending++;
+                } else {
+                    /* Danger: interrupt removed, not in single step. */
+                    danger_unreachable++;
+                }
+            }
+        } else if (context.Eip == 1 + bp_loc) {
+            if (trap_flag) {
+                /* Should not see this due to simultaneous change to
+                 * EIP and EFLAGS */
+                danger_unreachable++;
+            } else {
+                if (bp_present) {
+                    /* Danger, we're in the middle of an instruction */
+                    /* thread1: State M2 */
+                    danger_int_triggered++;
+                } else {
+                    /* Danger: interrupt removed, not in single step. */
+                    /* thread1: State M3 */
+                    danger_int_removed++;
+                }
+            }
+        } else if (context.Eip == 5 + bp_loc) {
+            if (trap_flag) {
+                /* Danger, TF is still set */
+                /* thread1: State M5 */
+                danger_step_finished++;
+            } else {
+                if (bp_present) {
+                    /* Safe: we're clear of the breakpoint */
+                    safe_after++;
+                } else {
+                    /* Danger: BP not restored */
+                    /* thread1: State M6 */
+                    danger_int_unrestored++;
+                }
+            }
+        } else if ((context.Eip > (5 + bp_loc)) || (context.Eip < bp_loc)) {
+            if (trap_flag) {
+                /* Should not see this: TF not used elsewhere */
+                danger_unreachable++;
+            } else {
+                if (bp_present) {
+                    /* Safe: we're clear of the breakpoint */
+                    safe_elsewhere++;
+                } else {
+                    /* Danger: BP not restored */
+                    danger_unreachable++;
+                }
+            }
+        } else {
+            /* Danger: we're in the middle of an instruction */
+            danger_unreachable++;
         }
 
         if (ResumeThread (thread1_handle) == (DWORD) -1) {
@@ -59,9 +140,6 @@ DWORD WINAPI thread2 (LPVOID arg)
 
 int main (void)
 {
-    DWORD i;
-    start = (intptr_t) ((void *) asm_loop);
-    end = start + AREA_SIZE;
     run = TRUE;
 
     thread1_handle = CreateThread (NULL, 0, thread1, NULL, 0, NULL);
@@ -76,10 +154,15 @@ int main (void)
     run = FALSE;
     WaitForSingleObject (thread1_handle, INFINITE);
     WaitForSingleObject (thread2_handle, INFINITE);
-    for (i = 0; i < AREA_SIZE; i ++) {
-        printf ("counter[0x%x] = %d\n", (unsigned) (i + start),
-                    (unsigned) counter[i]);
-    }
+    printf ("M1 danger_int_pending = %u\n", danger_int_pending);
+    printf ("M2 danger_int_triggered = %u\n", danger_int_triggered);
+    printf ("M3 danger_int_removed = %u\n", danger_int_removed);
+    printf ("M4 danger_step_pending = %u\n", danger_step_pending);
+    printf ("M5 danger_step_finished = %u\n", danger_step_finished);
+    printf ("M6 danger_int_unrestored = %u\n", danger_int_unrestored);
+    printf ("   safe_after = %u\n", safe_after);
+    printf ("   safe_elsewhere = %u\n", safe_elsewhere);
+    printf ("?? danger_unreachable = %u\n", danger_unreachable);
     return 0;
 }
 
