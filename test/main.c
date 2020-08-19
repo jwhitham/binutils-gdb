@@ -8,13 +8,17 @@ volatile BOOL run = TRUE;
 HANDLE thread1_handle;
 HANDLE thread2_handle;
 
-unsigned danger_unreachable = 0;
-unsigned danger_int_pending = 0;
-unsigned danger_int_triggered = 0;
+unsigned danger_unknown = 0;
+unsigned safe_int_pending = 0;
+unsigned safe_int_triggered = 0;
 unsigned danger_int_removed = 0;
 unsigned danger_step_pending = 0;
 unsigned danger_step_finished = 0;
 unsigned danger_int_unrestored = 0;
+unsigned safe_int_removed = 0;
+unsigned safe_step_pending = 0;
+unsigned safe_step_finished = 0;
+unsigned safe_int_unrestored = 0;
 unsigned safe_after = 0;
 unsigned safe_elsewhere = 0;
 
@@ -41,7 +45,10 @@ DWORD WINAPI thread2 (LPVOID arg)
     CONTEXT context;
     BOOL bp_present;
     BOOL trap_flag;
+    BOOL avoid_danger;
     DWORD bp_loc = (DWORD) ((intptr_t) ((void *) breakpoint));
+    DWORD eax;
+    DWORD ecx;
 
     memset (&context, 0, sizeof (CONTEXT));
 
@@ -62,47 +69,69 @@ DWORD WINAPI thread2 (LPVOID arg)
         bp_present = ((((volatile uint8_t *) breakpoint)[0]) == 0xcc);
         trap_flag = !!(context.EFlags & 0x100);
 
-        if (context.Eip == bp_loc) {
+        /* Check for danger with T3X instruction */
+        eax = 2;
+        ecx = 3;
+        asm volatile ("in $0xcc, %%eax" : "=a"(eax), "=c"(ecx));
+        avoid_danger = !!eax;
+
+        if ((eax != ecx) || ((eax & 1) != eax)) {
+            /* Inconsistent behaviour from T3X */
+            danger_unknown++;
+
+        } else if (context.Eip == bp_loc) {
             if (trap_flag) {
                 if (bp_present) {
                     /* Step pending on a breakpoint? Should not happen. */
-                    danger_unreachable++;
+                    danger_unknown++;
                 } else {
                     /* Danger, TF is set, we're about to step */
                     /* thread1: State M4 */
-                    danger_step_pending++;
+                    if (avoid_danger) {
+                        safe_step_pending++;
+                    } else {
+                        danger_step_pending++;
+                    }
                 }
             } else {
                 if (bp_present) {
-                    /* Danger: About to run the interrupt */
+                    /* Safe: About to run the interrupt, but it's known */
                     /* thread1: State M1 */
-                    danger_int_pending++;
+                    safe_int_pending++;
                 } else {
                     /* Danger: interrupt removed, not in single step. */
-                    danger_unreachable++;
+                    danger_unknown++;
                 }
             }
         } else if (context.Eip == 1 + bp_loc) {
             if (trap_flag) {
                 /* Should not see this due to simultaneous change to
                  * EIP and EFLAGS */
-                danger_unreachable++;
+                danger_unknown++;
             } else {
                 if (bp_present) {
-                    /* Danger, we're in the middle of an instruction */
+                    /* Safe: Just ran the interrupt, but it's known */
                     /* thread1: State M2 */
-                    danger_int_triggered++;
+                    safe_int_triggered++;
                 } else {
                     /* Danger: interrupt removed, not in single step. */
                     /* thread1: State M3 */
-                    danger_int_removed++;
+                    if (avoid_danger) {
+                        safe_int_removed++;
+                    } else {
+                        danger_int_removed++;
+                    }
                 }
             }
         } else if (context.Eip == 5 + bp_loc) {
             if (trap_flag) {
                 /* Danger, TF is still set */
                 /* thread1: State M5 */
-                danger_step_finished++;
+                if (avoid_danger) {
+                    safe_step_finished++;
+                } else {
+                    danger_step_finished++;
+                }
             } else {
                 if (bp_present) {
                     /* Safe: we're clear of the breakpoint */
@@ -110,25 +139,29 @@ DWORD WINAPI thread2 (LPVOID arg)
                 } else {
                     /* Danger: BP not restored */
                     /* thread1: State M6 */
-                    danger_int_unrestored++;
+                    if (avoid_danger) {
+                        safe_int_unrestored++;
+                    } else {
+                        danger_int_unrestored++;
+                    }
                 }
             }
         } else if ((context.Eip > (5 + bp_loc)) || (context.Eip < bp_loc)) {
             if (trap_flag) {
                 /* Should not see this: TF not used elsewhere */
-                danger_unreachable++;
+                danger_unknown++;
             } else {
                 if (bp_present) {
                     /* Safe: we're clear of the breakpoint */
                     safe_elsewhere++;
                 } else {
                     /* Danger: BP not restored */
-                    danger_unreachable++;
+                    danger_unknown++;
                 }
             }
         } else {
             /* Danger: we're in the middle of an instruction */
-            danger_unreachable++;
+            danger_unknown++;
         }
 
         if (ResumeThread (thread1_handle) == (DWORD) -1) {
@@ -154,15 +187,19 @@ int main (void)
     run = FALSE;
     WaitForSingleObject (thread1_handle, INFINITE);
     WaitForSingleObject (thread2_handle, INFINITE);
-    printf ("M1 danger_int_pending = %u\n", danger_int_pending);
-    printf ("M2 danger_int_triggered = %u\n", danger_int_triggered);
+    printf ("M1 safe_int_pending = %u\n", safe_int_pending);
+    printf ("M2 safe_int_triggered = %u\n", safe_int_triggered);
+    printf ("M3 safe_int_removed = %u\n", safe_int_removed);
+    printf ("M4 safe_step_pending = %u\n", safe_step_pending);
+    printf ("M5 safe_step_finished = %u\n", safe_step_finished);
+    printf ("M6 safe_int_unrestored = %u\n", safe_int_unrestored);
     printf ("M3 danger_int_removed = %u\n", danger_int_removed);
     printf ("M4 danger_step_pending = %u\n", danger_step_pending);
     printf ("M5 danger_step_finished = %u\n", danger_step_finished);
     printf ("M6 danger_int_unrestored = %u\n", danger_int_unrestored);
     printf ("   safe_after = %u\n", safe_after);
     printf ("   safe_elsewhere = %u\n", safe_elsewhere);
-    printf ("?? danger_unreachable = %u\n", danger_unreachable);
+    printf ("?? danger_unknown = %u\n", danger_unknown);
     return 0;
 }
 

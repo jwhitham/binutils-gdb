@@ -208,6 +208,7 @@ static void cygwin_set_dr7 (unsigned long val);
 static CORE_ADDR cygwin_get_dr (int i);
 static unsigned long cygwin_get_dr6 (void);
 static unsigned long cygwin_get_dr7 (void);
+static BOOL handle_t3x_instruction (CORE_ADDR addr, DWORD t3x_thread_id);
 
 static enum gdb_signal last_sig = GDB_SIGNAL_0;
 /* Set if a signal was received from the debugged process.  */
@@ -223,6 +224,7 @@ typedef struct windows_thread_info_struct
     char *name;
     int suspended;
     int reload_context;
+    int stepping;
     CONTEXT context;
   }
 windows_thread_info;
@@ -1254,6 +1256,12 @@ handle_exception (struct target_waitstatus *ourstatus)
     case EXCEPTION_PRIV_INSTRUCTION:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_PRIV_INSTRUCTION");
       ourstatus->value.sig = GDB_SIGNAL_ILL;
+      if (handle_t3x_instruction ((CORE_ADDR) (uintptr_t) rec->ExceptionAddress,
+                                  current_event.dwThreadId))
+        {
+	  ourstatus->value.sig = GDB_SIGNAL_TRAP;
+	  result = HANDLE_EXCEPTION_IGNORED;
+        }
       break;
     case EXCEPTION_NONCONTINUABLE_EXCEPTION:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_NONCONTINUABLE_EXCEPTION");
@@ -1454,6 +1462,7 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
   th = thread_rec (inferior_ptid.tid (), FALSE);
   if (th)
     {
+      th->stepping = step;
       if (step)
 	{
 	  /* Single step by setting t bit.  */
@@ -3176,6 +3185,64 @@ static unsigned long
 cygwin_get_dr7 (void)
 {
   return (unsigned long) dr[7];
+}
+
+/* Determine if the recent EXCEPTION_PRIV_INSTRUCTION was due to the
+ * T3X instruction. If it was, execute that instruction, and squash
+ * the exception. */
+static BOOL
+handle_t3x_instruction (CORE_ADDR addr, DWORD t3x_thread_id)
+{
+  ULONGEST len = 0;
+  gdb_byte readbuf[2];
+
+  if ((TARGET_XFER_OK == windows_xfer_memory (readbuf, NULL, addr, 2, &len))
+  && (len == 2)
+  && (readbuf[0] == 0xe5)
+  && (readbuf[1] == 0xcc))
+    {
+      /* T3X instruction: "in $0xcc, %eax" */
+      DWORD result = 0;
+      windows_thread_info *th;
+      CONTEXT tmp_context;
+
+      for (th = &thread_head; (th = th->next) != NULL;)
+        if (th->stepping)
+          {
+            result = 1;
+            DEBUG_EXEC (("gdb: T3X instruction: tid 0x%x at %s: "
+                         "result TRUE (tid 0x%x is stepping)\n",
+                          t3x_thread_id,
+                          host_address_to_string (addr), th->id));
+            break;
+          }
+
+      if (!result)
+        {
+          DEBUG_EXEC (("gdb: T3X instruction: tid 0x%x at %s: "
+                       "result FALSE\n",
+                        t3x_thread_id,
+                        host_address_to_string (addr)));
+        }
+
+      /* As we are in the exception handling code the thread
+       * is not flagged as suspended. It's easiest to modify the
+       * registers with SetThreadContext here. */
+
+      th = thread_rec (t3x_thread_id, 0);
+      tmp_context.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
+      CHECK (GetThreadContext (th->h, &tmp_context));
+
+      tmp_context.Eax = result;
+      tmp_context.Ecx = result;
+      tmp_context.Eip += 2;
+
+      CHECK (SetThreadContext (th->h, &tmp_context));
+      return TRUE;
+   }
+
+ /* Not the T3x instruction. */
+ return FALSE;
 }
 
 /* Determine if the thread referenced by "ptid" is alive
