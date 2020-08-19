@@ -24,6 +24,7 @@ unsigned safe_elsewhere = 0;
 
 extern void asm_loop (void);
 extern void breakpoint (void);
+extern int avoid_danger (void);
 
 void error (const char * text)
 {
@@ -45,10 +46,7 @@ DWORD WINAPI thread2 (LPVOID arg)
     CONTEXT context;
     BOOL bp_present;
     BOOL trap_flag;
-    BOOL avoid_danger;
     DWORD bp_loc = (DWORD) ((intptr_t) ((void *) breakpoint));
-    DWORD eax;
-    DWORD ecx;
 
     memset (&context, 0, sizeof (CONTEXT));
 
@@ -69,17 +67,7 @@ DWORD WINAPI thread2 (LPVOID arg)
         bp_present = ((((volatile uint8_t *) breakpoint)[0]) == 0xcc);
         trap_flag = !!(context.EFlags & 0x100);
 
-        /* Check for danger with T3X instruction */
-        eax = 2;
-        ecx = 3;
-        asm volatile ("in $0xcc, %%eax" : "=a"(eax), "=c"(ecx));
-        avoid_danger = !!eax;
-
-        if ((eax != ecx) || ((eax & 1) != eax)) {
-            /* Inconsistent behaviour from T3X */
-            danger_unknown++;
-
-        } else if (context.Eip == bp_loc) {
+        if (context.Eip == bp_loc) {
             if (trap_flag) {
                 if (bp_present) {
                     /* Step pending on a breakpoint? Should not happen. */
@@ -87,7 +75,7 @@ DWORD WINAPI thread2 (LPVOID arg)
                 } else {
                     /* Danger, TF is set, we're about to step */
                     /* thread1: State M4 */
-                    if (avoid_danger) {
+                    if (avoid_danger()) {
                         safe_step_pending++;
                     } else {
                         danger_step_pending++;
@@ -116,7 +104,7 @@ DWORD WINAPI thread2 (LPVOID arg)
                 } else {
                     /* Danger: interrupt removed, not in single step. */
                     /* thread1: State M3 */
-                    if (avoid_danger) {
+                    if (avoid_danger()) {
                         safe_int_removed++;
                     } else {
                         danger_int_removed++;
@@ -127,7 +115,7 @@ DWORD WINAPI thread2 (LPVOID arg)
             if (trap_flag) {
                 /* Danger, TF is still set */
                 /* thread1: State M5 */
-                if (avoid_danger) {
+                if (avoid_danger()) {
                     safe_step_finished++;
                 } else {
                     danger_step_finished++;
@@ -139,7 +127,7 @@ DWORD WINAPI thread2 (LPVOID arg)
                 } else {
                     /* Danger: BP not restored */
                     /* thread1: State M6 */
-                    if (avoid_danger) {
+                    if (avoid_danger()) {
                         safe_int_unrestored++;
                     } else {
                         danger_int_unrestored++;
